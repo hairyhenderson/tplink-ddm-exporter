@@ -1,0 +1,107 @@
+{
+  "title": "TP-Link SFP+ DDM Monitoring",
+  "panels": [
+    {
+      "title": "SFP Temperature by Port",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "tplink_sfp_temperature_celsius > 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": {
+            "steps": [
+              {"value": null, "color": "green"},
+              {"value": 60, "color": "yellow"},
+              {"value": 70, "color": "orange"},
+              {"value": 80, "color": "red"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Exporter Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "tplink_ddm_exporter_up"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"value": 1, "text": "UP"},
+            {"value": 0, "text": "DOWN"}
+          ],
+          "thresholds": {
+            "steps": [
+              {"value": 0, "color": "red"},
+              {"value": 1, "color": "green"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "SFP Voltage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "tplink_sfp_voltage_volts > 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt"
+        }
+      }
+    },
+    {
+      "title": "SFP Bias Current",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "tplink_sfp_bias_current_milliamps > 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mA"
+        }
+      }
+    },
+    {
+      "title": "TX Power",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "tplink_sfp_tx_power_dbm"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm"
+        }
+      }
+    },
+    {
+      "title": "RX Power",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "tplink_sfp_rx_power_dbm"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm"
+        }
+      }
+    }
+  ]
+}
+

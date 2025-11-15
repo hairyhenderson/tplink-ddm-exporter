@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  tplink-ddm-exporter:
+    image: tplink-ddm-exporter:latest
+    container_name: tplink-ddm-exporter
+    network_mode: host
+    environment:
+      - SNMP_TARGET=192.168.2.96
+      - SNMP_COMMUNITY=public
+      - LISTEN_ADDR=:9116
+    restart: unless-stopped
+
