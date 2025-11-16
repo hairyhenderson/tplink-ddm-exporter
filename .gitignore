@@ -1,4 +1,2 @@
-tplink-ddm-exporter
-*.test
-*.out
-
+bin/
+c.out

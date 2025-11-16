@@ -1,27 +1,67 @@
-# Build stage
-FROM golang:1.23-alpine AS builder
+# syntax=docker/dockerfile:1.6.0-labs
+FROM --platform=linux/amd64 golang:1.25-alpine AS build
 
-WORKDIR /build
+ARG PKG_NAME
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
+RUN apk add --no-cache make git
 
-# Copy source
-COPY *.go ./
+WORKDIR /src
+COPY go.mod ./
+COPY go.sum ./
 
-# Build static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o tplink-ddm-exporter .
+RUN --mount=type=cache,id=go-build-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},target=/root/.cache/go-build \
+	--mount=type=cache,id=go-pkg-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},target=/go/pkg \
+		go mod download -x
 
-# Runtime stage
-FROM scratch
+COPY . ./
 
-COPY --from=builder /build/tplink-ddm-exporter /tplink-ddm-exporter
+RUN --mount=type=cache,id=go-build-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},target=/root/.cache/go-build \
+	--mount=type=cache,id=go-pkg-${TARGETOS}-${TARGETARCH}${TARGETVARIANT},target=/go/pkg \
+		make build
+RUN mv bin/${PKG_NAME}* /bin/
 
-# Add CA certificates for HTTPS (if needed in future)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+FROM scratch AS release-linux
 
-EXPOSE 9116
+ARG PKG_NAME
+ARG VCS_REF
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
 
-ENTRYPOINT ["/tplink-ddm-exporter"]
+LABEL org.opencontainers.image.revision=$VCS_REF \
+	org.opencontainers.image.source="https://github.com/hairyhenderson/${PKG_NAME}"
 
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /bin/${PKG_NAME}_${TARGETOS}-${TARGETARCH}${TARGETVARIANT} /${PKG_NAME}
+
+ENTRYPOINT [ "/tplink-ddm-exporter" ]
+
+FROM alpine:3.22 AS alpine
+
+ARG PKG_NAME
+ARG VCS_REF
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+LABEL org.opencontainers.image.revision=$VCS_REF \
+	org.opencontainers.image.source="https://github.com/hairyhenderson/${PKG_NAME}"
+
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /bin/${PKG_NAME}_${TARGETOS}-${TARGETARCH}${TARGETVARIANT} /${PKG_NAME}
+
+ENTRYPOINT [ "/tplink-ddm-exporter" ]
+
+FROM --platform=windows/amd64 mcr.microsoft.com/windows/nanoserver:2009-KB4579311 AS release-windows
+
+ARG PKG_NAME
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+COPY --from=build /bin/${PKG_NAME}_${TARGETOS}-${TARGETARCH}${TARGETVARIANT}.exe /${PKG_NAME}.exe
+
+FROM release-$TARGETOS AS release

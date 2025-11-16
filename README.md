@@ -24,18 +24,29 @@ tplink_ddm_scrape_duration_seconds - Time taken to scrape SNMP metrics
 
 ## Configuration
 
-Environment variables:
-- `SNMP_TARGET` - Switch IP address (default: `192.168.1.1`)
-- `SNMP_COMMUNITY` - SNMP community string (default: `public`)
-- `LISTEN_ADDR` - Exporter listen address (default: `:9116`)
+Command-line flags:
+- `-target` - SNMP target IP address (default: `192.168.2.96`)
+- `-community` - SNMP community string (default: `public`)
+- `-addr` - Listen address (default: `:9116`)
+- `-log-level` - Log level: debug, info, warn, error (default: `info`)
+- `-version` - Show version and exit
+
+OpenTelemetry tracing can be configured via standard OTEL environment variables:
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP endpoint URL
+- `OTEL_EXPORTER_OTLP_TRACES_INSECURE` or `OTEL_EXPORTER_OTLP_INSECURE` - Set to `true` for non-TLS endpoints
+- `OTEL_SDK_DISABLED` - Set to `true` to disable tracing
+
+## Endpoints
+
+- `/metrics` - Exporter self-metrics (up, duration, go/process metrics)
+- `/scrape` - Scraped device metrics (SFP temperature, voltage, power, etc.)
+- `/` - HTML status page
 
 ## Usage
 
 ### Binary
 ```bash
-export SNMP_TARGET=192.168.1.1
-export SNMP_COMMUNITY=public
-./tplink-ddm-exporter
+./tplink-ddm-exporter -target 192.168.2.96 -community public -addr :9116
 ```
 
 ### Docker
@@ -43,9 +54,8 @@ export SNMP_COMMUNITY=public
 docker run -d \
   --name tplink-ddm-exporter \
   --network host \
-  -e SNMP_TARGET=192.168.1.1 \
-  -e SNMP_COMMUNITY=public \
-  ghcr.io/hairyhenderson/tplink-ddm-exporter:latest
+  ghcr.io/hairyhenderson/tplink-ddm-exporter:latest \
+  -target 192.168.2.96 -community public -addr :9116
 ```
 
 ## Development
@@ -55,7 +65,7 @@ docker run -d \
 go test -v ./...
 
 # Build
-go build -o tplink-ddm-exporter .
+go build -o tplink-ddm-exporter ./cmd/tplink-ddm-exporter
 
 # Run
 ./tplink-ddm-exporter

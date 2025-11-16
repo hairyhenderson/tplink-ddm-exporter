@@ -5,9 +5,9 @@ services:
     image: tplink-ddm-exporter:latest
     container_name: tplink-ddm-exporter
     network_mode: host
-    environment:
-      - SNMP_TARGET=192.168.1.1
-      - SNMP_COMMUNITY=public
-      - LISTEN_ADDR=:9116
+    command:
+      - -target=192.168.2.96
+      - -community=public
+      - -addr=:9116
     restart: unless-stopped
 

@@ -1,6 +1,7 @@
-package main
+package tplinkddm
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -10,8 +11,8 @@ import (
 // Exporter collects DDM metrics from TP-Link switch
 type Exporter struct {
 	snmpClient *SNMPClient
-	up         prometheus.Gauge
-	duration   prometheus.Gauge
+	Up         prometheus.Gauge
+	Duration   prometheus.Gauge
 	temp       *prometheus.GaugeVec
 	voltage    *prometheus.GaugeVec
 	biasCurr   *prometheus.GaugeVec
@@ -23,11 +24,11 @@ type Exporter struct {
 func NewExporter(snmpClient *SNMPClient) *Exporter {
 	return &Exporter{
 		snmpClient: snmpClient,
-		up: prometheus.NewGauge(prometheus.GaugeOpts{
+		Up: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "tplink_ddm_exporter_up",
 			Help: "Was the last scrape successful (1 = yes, 0 = no)",
 		}),
-		duration: prometheus.NewGauge(prometheus.GaugeOpts{
+		Duration: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "tplink_ddm_scrape_duration_seconds",
 			Help: "Duration of the last scrape in seconds",
 		}),
@@ -71,8 +72,8 @@ func NewExporter(snmpClient *SNMPClient) *Exporter {
 
 // Describe implements prometheus.Collector
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
-	e.up.Describe(ch)
-	e.duration.Describe(ch)
+	e.Up.Describe(ch)
+	e.Duration.Describe(ch)
 	e.temp.Describe(ch)
 	e.voltage.Describe(ch)
 	e.biasCurr.Describe(ch)
@@ -82,23 +83,31 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements prometheus.Collector
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+	ctx := context.Background()
+	e.CollectWithContext(ctx, ch)
+}
+
+// CollectWithContext collects metrics with a context for cancellation support
+func (e *Exporter) CollectWithContext(ctx context.Context, ch chan<- prometheus.Metric) {
 	start := time.Now()
+
 	defer func() {
-		e.duration.Set(time.Since(start).Seconds())
-		e.duration.Collect(ch)
+		e.Duration.Set(time.Since(start).Seconds())
+		e.Duration.Collect(ch)
 	}()
 
 	// Scrape metrics
-	metrics, err := e.snmpClient.GetDDMMetrics()
+	metrics, err := e.snmpClient.GetDDMMetrics(ctx)
 	if err != nil {
 		slog.Error("failed to scrape metrics", "error", err)
-		e.up.Set(0)
-		e.up.Collect(ch)
+		e.Up.Set(0)
+		e.Up.Collect(ch)
+
 		return
 	}
 
-	e.up.Set(1)
-	e.up.Collect(ch)
+	e.Up.Set(1)
+	e.Up.Collect(ch)
 
 	// Reset all metrics
 	e.temp.Reset()

@@ -1,10 +1,12 @@
-package main
+package tplinkddm
 
 import (
 	"testing"
 )
 
 func TestParseFloat(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		input   string
@@ -24,11 +26,16 @@ func TestParseFloat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseFloat(tt.input)
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseFloat() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("parseFloat() = %v, want %v", got, tt.want)
 			}
@@ -37,6 +44,8 @@ func TestParseFloat(t *testing.T) {
 }
 
 func TestParsePort(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		input   string
@@ -54,15 +63,19 @@ func TestParsePort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parsePort(tt.input)
+
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsePort() error = %v, wantErr %v", err, tt.wantErr)
+
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("parsePort() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
-
