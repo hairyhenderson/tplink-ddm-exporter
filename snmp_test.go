@@ -5,12 +5,12 @@ import (
 )
 
 func TestNewSNMPClient(t *testing.T) {
-	client := NewSNMPClient("192.168.2.96", "public")
+	client := NewSNMPClient("192.168.1.1", "public")
 	if client == nil {
 		t.Fatal("NewSNMPClient returned nil")
 	}
-	if client.target != "192.168.2.96" {
-		t.Errorf("target = %v, want 192.168.2.96", client.target)
+	if client.target != "192.168.1.1" {
+		t.Errorf("target = %v, want 192.168.1.1", client.target)
 	}
 	if client.community != "public" {
 		t.Errorf("community = %v, want public", client.community)

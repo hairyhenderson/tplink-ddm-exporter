@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,7 +12,7 @@ import (
 
 func main() {
 	// Configuration from environment
-	target := getEnv("SNMP_TARGET", "192.168.2.96")
+	target := getEnv("SNMP_TARGET", "192.168.1.1")
 	community := getEnv("SNMP_COMMUNITY", "public")
 	listenAddr := getEnv("LISTEN_ADDR", ":9116")
 
@@ -26,17 +27,16 @@ func main() {
 	// Register exporter
 	prometheus.MustRegister(exporter)
 
-	// HTTP handler
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<html>
+		_, _ = io.WriteString(w, `<html>
 <head><title>TP-Link DDM Exporter</title></head>
 <body>
 <h1>TP-Link DDM Exporter</h1>
 <p><a href="/metrics">Metrics</a></p>
 </body>
-</html>`))
+</html>`)
 	})
 
 	slog.Info("listening", "addr", listenAddr)
@@ -52,4 +52,3 @@ func getEnv(key, defaultValue string) string {
 	}
 	return defaultValue
 }
-

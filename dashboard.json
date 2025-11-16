@@ -65,12 +65,12 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "tplink_sfp_bias_current_milliamps > 0"
+          "expr": "tplink_sfp_bias_current_amperes > 0"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "mA"
+          "unit": "amp"
         }
       }
     },

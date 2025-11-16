@@ -47,8 +47,8 @@ func NewExporter(snmpClient *SNMPClient) *Exporter {
 		),
 		biasCurr: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Name: "tplink_sfp_bias_current_milliamps",
-				Help: "SFP bias current in milliamps",
+				Name: "tplink_sfp_bias_current_amperes",
+				Help: "SFP bias current in amperes",
 			},
 			[]string{"port"},
 		),
@@ -111,7 +111,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	for _, m := range metrics {
 		e.temp.WithLabelValues(m.Port).Set(m.Temperature)
 		e.voltage.WithLabelValues(m.Port).Set(m.Voltage)
-		e.biasCurr.WithLabelValues(m.Port).Set(m.BiasCurrent)
+		e.biasCurr.WithLabelValues(m.Port).Set(m.BiasCurrent / 1000) // Convert mA to A
 		e.txPower.WithLabelValues(m.Port).Set(m.TxPower)
 		e.rxPower.WithLabelValues(m.Port).Set(m.RxPower)
 	}
@@ -123,4 +123,3 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	e.txPower.Collect(ch)
 	e.rxPower.Collect(ch)
 }
-

@@ -14,7 +14,7 @@ docker-build:
 
 docker-run: docker-build
 	docker run --rm --network host \
-		-e SNMP_TARGET=192.168.2.96 \
+		-e SNMP_TARGET=192.168.1.1 \
 		-e SNMP_COMMUNITY=public \
 		tplink-ddm-exporter:latest
 
