@@ -12,12 +12,52 @@ This exporter queries the TP-Link DDM SNMP OIDs directly, parses the string valu
 
 ## Metrics
 
+### Current Values
+
 ```
 tplink_sfp_temperature_celsius{device="...",target="...",port="N"} - SFP temperature in Celsius
 tplink_sfp_voltage_volts{device="...",target="...",port="N"} - SFP voltage in volts
 tplink_sfp_bias_current_amperes{device="...",target="...",port="N"} - SFP bias current in amperes
 tplink_sfp_tx_power_dbm{device="...",target="...",port="N"} - SFP TX power in dBm
 tplink_sfp_rx_power_dbm{device="...",target="...",port="N"} - SFP RX power in dBm
+```
+
+### Configuration
+
+```
+tplink_ddm_enabled{device="...",target="...",port="N"} - Whether DDM monitoring is enabled on the port (1 = enabled, 0 = disabled)
+tplink_ddm_shutdown_policy{device="...",target="...",port="N"} - Port shutdown policy on threshold violation (0 = none, 1 = warning, 2 = alarm)
+tplink_port_lag_member{device="...",target="...",port="N",lag="name"} - Port LAG/trunk membership (1 = member, 0 = not member)
+```
+
+These are configuration settings that control DDM behavior and port membership.
+
+### Status Flags
+
+```
+tplink_sfp_ddm_supported{device="...",target="...",port="N"} - Whether the SFP supports DDM (1 = yes, 0 = no)
+tplink_sfp_loss_of_signal{device="...",target="...",port="N"} - Loss of Signal status (1 = signal lost, 0 = ok)
+tplink_sfp_tx_fault{device="...",target="...",port="N"} - Transmitter fault status (1 = fault, 0 = ok)
+```
+
+These status flags come from the SFP module's internal diagnostics and indicate real-time operational issues.
+
+### Thresholds
+
+These metrics are static values burned into the SFP module's EEPROM at manufacturing time. They define the safe operating ranges for the transceiver. All thresholds use labels to distinguish between high/low thresholds and alarm/warning types:
+
+```
+tplink_sfp_temperature_threshold_celsius{device="...",target="...",port="N", level="high|low", type="alarm|warning"}
+tplink_sfp_voltage_threshold_volts{device="...",target="...",port="N", level="high|low", type="alarm|warning"}
+tplink_sfp_bias_current_threshold_amperes{device="...",target="...",port="N", level="high|low", type="alarm|warning"}
+tplink_sfp_tx_power_threshold_dbm{device="...",target="...",port="N", level="high|low", type="alarm|warning"}
+tplink_sfp_rx_power_threshold_dbm{device="...",target="...",port="N", level="high|low", type="alarm|warning"}
+```
+
+Example queries:
+- High alarm threshold for temperature on port 1: `tplink_sfp_temperature_threshold_celsius{port="1", level="high", type="alarm"}`
+- All low warning thresholds: `{__name__=~"tplink_sfp_.*_threshold_.*", level="low", type="warning"}`
+- Compare current temperature to high alarm: `tplink_sfp_temperature_celsius > on(port) tplink_sfp_temperature_threshold_celsius{level="high", type="alarm"}`
 ```
 
 All SFP metrics include:

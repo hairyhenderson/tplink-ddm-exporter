@@ -25,7 +25,7 @@ func TestCollector_Collect(t *testing.T) {
 		mockResult *DDMResult
 		mockErr    error
 		target     string
-		wantCount  int // expected number of metrics
+		wantCount  int
 	}{
 		{
 			name: "successful collection",
@@ -50,8 +50,9 @@ func TestCollector_Collect(t *testing.T) {
 					},
 				},
 			},
-			target:    "192.168.1.1",
-			wantCount: 10, // 5 metrics * 2 ports
+			target: "192.168.1.1",
+			// 5 current + 3 config + 3 status + 5*4 thresholds = 31 per port, * 2 ports = 62
+			wantCount: 62,
 		},
 		{
 			name: "empty sysName",
@@ -69,58 +70,29 @@ func TestCollector_Collect(t *testing.T) {
 				},
 			},
 			target:    "192.168.1.2",
-			wantCount: 5, // 5 metrics * 1 port
+			wantCount: 31, // 31 metrics * 1 port
 		},
 		{
 			name:      "SNMP error",
 			mockErr:   context.DeadlineExceeded,
 			target:    "192.168.1.3",
-			wantCount: 0, // no metrics on error
+			wantCount: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mock SNMP client
 			mockClient := &mockSNMPClient{
 				result: tt.mockResult,
 				err:    tt.mockErr,
 			}
 
-			// Create collector with mock
-			collector := &Collector{
-				snmpClient: mockClient,
-				target:     tt.target,
-				temp: prometheus.NewGaugeVec(
-					prometheus.GaugeOpts{Name: "test_temp", Help: "test temperature"},
-					[]string{"device", "target", "port"},
-				),
-				voltage: prometheus.NewGaugeVec(
-					prometheus.GaugeOpts{Name: "test_voltage", Help: "test voltage"},
-					[]string{"device", "target", "port"},
-				),
-				biasCurr: prometheus.NewGaugeVec(
-					prometheus.GaugeOpts{Name: "test_bias", Help: "test bias current"},
-					[]string{"device", "target", "port"},
-				),
-				txPower: prometheus.NewGaugeVec(
-					prometheus.GaugeOpts{Name: "test_tx", Help: "test TX power"},
-					[]string{"device", "target", "port"},
-				),
-				rxPower: prometheus.NewGaugeVec(
-					prometheus.GaugeOpts{Name: "test_rx", Help: "test RX power"},
-					[]string{"device", "target", "port"},
-				),
-			}
+			collector := newTestCollector(mockClient, tt.target)
 
-			// Create a registry and register the collector
 			registry := prometheus.NewRegistry()
 			registry.MustRegister(collector)
 
-			// Collect metrics
 			metricCount := testutil.CollectAndCount(collector)
-
-			// Verify metric count
 			assert.Equal(t, tt.wantCount, metricCount)
 		})
 	}
@@ -129,20 +101,93 @@ func TestCollector_Collect(t *testing.T) {
 func TestCollector_Describe(t *testing.T) {
 	collector := NewCollector(&SNMPClient{}, "192.168.1.1")
 
-	// Collect descriptions
-	ch := make(chan *prometheus.Desc, 10)
+	ch := make(chan *prometheus.Desc, 20)
 
 	go func() {
 		collector.Describe(ch)
 		close(ch)
 	}()
 
-	// Count descriptions
 	count := 0
 	for range ch {
 		count++
 	}
 
-	// Should have 5 metric descriptions (temp, voltage, bias, tx, rx)
-	assert.Equal(t, 5, count)
+	// 5 current + 3 config + 3 status + 5 thresholds = 16
+	assert.Equal(t, 16, count)
+}
+
+//nolint:dupl // test helper intentionally mirrors NewCollector with test-specific metric names
+func newTestCollector(mock SNMPGetter, target string) *Collector {
+	labels := []string{"device", "target", "port"}
+	thresholdLabels := []string{"device", "target", "port", "level", "type"}
+
+	return &Collector{
+		snmpClient: mock,
+		target:     target,
+		temp: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_temp", Help: "h"},
+			labels,
+		),
+		voltage: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_voltage", Help: "h"},
+			labels,
+		),
+		biasCurr: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_bias", Help: "h"},
+			labels,
+		),
+		txPower: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_tx", Help: "h"},
+			labels,
+		),
+		rxPower: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_rx", Help: "h"},
+			labels,
+		),
+		ddmEnabled: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_ddm_enabled", Help: "h"},
+			labels,
+		),
+		shutdownPolicy: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_shutdown_policy", Help: "h"},
+			labels,
+		),
+		portLAG: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_lag", Help: "h"},
+			[]string{"device", "target", "port", "lag"},
+		),
+		ddmSupported: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_ddm_supported", Help: "h"},
+			labels,
+		),
+		lossOfSignal: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_los", Help: "h"},
+			labels,
+		),
+		txFault: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_tx_fault", Help: "h"},
+			labels,
+		),
+		tempThreshold: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_temp_thresh", Help: "h"},
+			thresholdLabels,
+		),
+		voltageThreshold: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_voltage_thresh", Help: "h"},
+			thresholdLabels,
+		),
+		biasCurrentThreshold: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_bias_thresh", Help: "h"},
+			thresholdLabels,
+		),
+		txPowerThreshold: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_tx_thresh", Help: "h"},
+			thresholdLabels,
+		),
+		rxPowerThreshold: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{Name: "test_rx_thresh", Help: "h"},
+			thresholdLabels,
+		),
+	}
 }
