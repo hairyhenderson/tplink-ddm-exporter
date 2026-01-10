@@ -58,10 +58,6 @@ jobs:
 
         set -x
         make docker-multi COMMIT=${{ github.sha }} DOCKER_REPO=ghcr.io/${src_repo} BUILDX_ACTION=--push
-
-        set -x
-        docker buildx imagetools create -t ${src_repo}:latest ghcr.io/${src_repo}:latest
-        docker buildx imagetools create -t ${src_repo}:alpine ghcr.io/${src_repo}:alpine
       if: github.repository == 'hairyhenderson/tplink-ddm-exporter' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     - name: Login to DockerHub
       uses: docker/login-action@v3
@@ -76,15 +72,13 @@ jobs:
         major_version=${git_tag%%\.*}
 
         set -x
-        repo=ghcr.io/${repo_name}
-        docker buildx imagetools create -t ${repo}:${git_tag} ghcr.io/${repo_name}:latest
-        docker buildx imagetools create -t ${repo}:${major_version} ghcr.io/${repo_name}:latest
-        docker buildx imagetools create -t ${repo}:${git_tag}-alpine ghcr.io/${repo_name}:alpine
-        docker buildx imagetools create -t ${repo}:${major_version}-alpine ghcr.io/${repo_name}:alpine
-
+        # Copy from GHCR to Docker Hub with version tags
         repo=docker.io/${repo_name}
-        docker buildx imagetools create -t ${repo}:${git_tag} ghcr.io/${repo_name}:latest
-        docker buildx imagetools create -t ${repo}:${major_version} ghcr.io/${repo_name}:latest
-        docker buildx imagetools create -t ${repo}:${git_tag}-alpine ghcr.io/${repo_name}:alpine
-        docker buildx imagetools create -t ${repo}:${major_version}-alpine ghcr.io/${repo_name}:alpine
+        docker buildx imagetools create -t ${repo}:${git_tag} -t ${repo}:${major_version} -t ${repo}:latest ghcr.io/${repo_name}:latest
+        docker buildx imagetools create -t ${repo}:${git_tag}-alpine -t ${repo}:${major_version}-alpine -t ${repo}:alpine ghcr.io/${repo_name}:alpine
+        
+        # Add version tags to GHCR images
+        repo=ghcr.io/${repo_name}
+        docker buildx imagetools create -t ${repo}:${git_tag} -t ${repo}:${major_version} ghcr.io/${repo_name}:latest
+        docker buildx imagetools create -t ${repo}:${git_tag}-alpine -t ${repo}:${major_version}-alpine ghcr.io/${repo_name}:alpine
       if: github.repository == 'hairyhenderson/tplink-ddm-exporter' && startsWith(github.ref, 'refs/tags/')
