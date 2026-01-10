@@ -13,14 +13,17 @@ This exporter queries the TP-Link DDM SNMP OIDs directly, parses the string valu
 ## Metrics
 
 ```
-tplink_sfp_temperature_celsius{port="N"} - SFP temperature in Celsius
-tplink_sfp_voltage_volts{port="N"} - SFP voltage in volts
-tplink_sfp_bias_current_amperes{port="N"} - SFP bias current in amperes
-tplink_sfp_tx_power_dbm{port="N"} - SFP TX power in dBm
-tplink_sfp_rx_power_dbm{port="N"} - SFP RX power in dBm
-tplink_ddm_exporter_up - Exporter health (1 = up, 0 = down)
-tplink_ddm_scrape_duration_seconds - Time taken to scrape SNMP metrics
+tplink_sfp_temperature_celsius{device="...",target="...",port="N"} - SFP temperature in Celsius
+tplink_sfp_voltage_volts{device="...",target="...",port="N"} - SFP voltage in volts
+tplink_sfp_bias_current_amperes{device="...",target="...",port="N"} - SFP bias current in amperes
+tplink_sfp_tx_power_dbm{device="...",target="...",port="N"} - SFP TX power in dBm
+tplink_sfp_rx_power_dbm{device="...",target="...",port="N"} - SFP RX power in dBm
 ```
+
+All SFP metrics include:
+- `device` - Device name (auto-detected via SNMP sysName)
+- `target` - SNMP target IP address
+- `port` - SFP port number
 
 ## Configuration
 
@@ -38,15 +41,28 @@ OpenTelemetry tracing can be configured via standard OTEL environment variables:
 
 ## Endpoints
 
-- `/metrics` - Exporter self-metrics (up, duration, go/process metrics)
-- `/scrape` - Scraped device metrics (SFP temperature, voltage, power, etc.)
+- `/metrics` - Exporter self-metrics (Go runtime and process metrics)
+- `/scrape` - Device metrics (SFP temperature, voltage, power, etc.)
+  - Query parameters:
+    - `target` - SNMP target IP address (defaults to configured target)
+    - `community` - SNMP community string (defaults to configured community)
 - `/` - HTML status page
 
 ## Usage
 
 ### Binary
 ```bash
+# Start the exporter with a default target
 ./tplink-ddm-exporter -target 192.168.2.96 -community public -addr :9116
+
+# Scrape the default target
+curl http://localhost:9116/scrape
+
+# Scrape a specific device (device name auto-detected from SNMP)
+curl 'http://localhost:9116/scrape?target=192.168.1.100'
+
+# Scrape multiple devices (configure in Prometheus)
+# See Prometheus configuration example below
 ```
 
 ### Docker
@@ -56,6 +72,28 @@ docker run -d \
   --network host \
   ghcr.io/hairyhenderson/tplink-ddm-exporter:latest \
   -target 192.168.2.96 -community public -addr :9116
+```
+
+### Prometheus Configuration
+
+To scrape multiple devices, configure Prometheus with static targets:
+
+```yaml
+scrape_configs:
+  - job_name: 'tplink-ddm'
+    static_configs:
+      - targets:
+        - 192.168.1.100  # switch-core
+        - 192.168.1.101  # switch-edge
+        - 192.168.1.102  # switch-lab
+    metrics_path: /scrape
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: localhost:9116  # Address of the exporter
 ```
 
 ## Development

@@ -87,15 +87,10 @@ func run(ctx context.Context, cfg *config) error {
 	}
 
 	logger.InfoContext(ctx, "starting TP-Link DDM exporter",
-		"target", cfg.Target,
+		"default_target", cfg.Target,
 		"listen_addr", cfg.ListenAddr)
 
-	// Create SNMP client and exporter
-	snmpClient := tplinkddm.NewSNMPClient(cfg.Target, cfg.Community)
-	exporter := tplinkddm.NewExporter(snmpClient)
-
-	exporterRegistry, scrapeRegistry := setupRegistries(exporter)
-	srv := setupServer(ctx, exporterRegistry, scrapeRegistry)
+	srv := setupServer(ctx, cfg)
 
 	return serve(ctx, logger, srv, cfg.ListenAddr, stop)
 }
@@ -133,34 +128,42 @@ func serve(ctx context.Context, logger *slog.Logger, srv *http.Server, listenAdd
 	return nil
 }
 
-func setupRegistries(exporter *tplinkddm.Exporter) (*prometheus.Registry, *prometheus.Registry) {
-	// Create registry for exporter self-metrics only (up, duration)
+func setupServer(ctx context.Context, cfg *config) *http.Server {
+	mux := http.NewServeMux()
+
+	// Exporter self-metrics endpoint
 	exporterRegistry := prometheus.NewRegistry()
 	exporterRegistry.MustRegister(collectors.NewGoCollector())
 	exporterRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	// Register only exporter self-metrics, not device metrics
-	exporterRegistry.MustRegister(exporter.Up)
-	exporterRegistry.MustRegister(exporter.Duration)
 
-	// Create registry for scraped device metrics (includes exporter metrics too)
-	scrapeRegistry := prometheus.NewRegistry()
-	scrapeRegistry.MustRegister(exporter)
-
-	return exporterRegistry, scrapeRegistry
-}
-
-func setupServer(ctx context.Context, exporterRegistry, scrapeRegistry *prometheus.Registry) *http.Server {
-	mux := http.NewServeMux()
-
-	// Exporter metrics endpoint
 	mux.Handle("/metrics", promhttp.HandlerFor(exporterRegistry, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
 
 	// Scrape endpoint (returns scraped device metrics)
 	mux.HandleFunc("/scrape", func(w http.ResponseWriter, r *http.Request) {
-		// Gathering from the registry will automatically trigger Collect()
-		// which performs the SNMP scrape
+		// Get target from query params, fall back to default
+		target := r.URL.Query().Get("target")
+		if target == "" {
+			target = cfg.Target
+		}
+
+		// Get community from query params, fall back to default
+		community := r.URL.Query().Get("community")
+		if community == "" {
+			community = cfg.Community
+		}
+
+		// Create SNMP client and collector
+		// Device name will be auto-detected from SNMP sysName during scrape
+		snmpClient := tplinkddm.NewSNMPClient(target, community)
+		collector := tplinkddm.NewCollector(snmpClient, target)
+
+		// Create a registry for this scrape
+		scrapeRegistry := prometheus.NewRegistry()
+		scrapeRegistry.MustRegister(collector)
+
+		// Perform the scrape
 		handler := promhttp.HandlerFor(scrapeRegistry, promhttp.HandlerOpts{
 			EnableOpenMetrics: true,
 		})
@@ -175,7 +178,16 @@ func setupServer(ctx context.Context, exporterRegistry, scrapeRegistry *promethe
 <body>
 <h1>TP-Link DDM Exporter</h1>
 <p><a href="/metrics">Exporter Metrics</a></p>
-<p><a href="/scrape">Scrape Device Metrics</a></p>
+<p><a href="/scrape">Scrape Device Metrics (default target)</a></p>
+<h2>Usage</h2>
+<p>Scrape a specific device:</p>
+<pre>/scrape?target=192.168.1.100</pre>
+<p>Query parameters:</p>
+<ul>
+<li><code>target</code> - SNMP target IP address (defaults to configured target)</li>
+<li><code>community</code> - SNMP community string (defaults to configured community)</li>
+</ul>
+<p>Device names are automatically detected from SNMP sysName.</p>
 </body>
 </html>`)
 	})
