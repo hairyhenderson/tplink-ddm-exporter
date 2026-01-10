@@ -2,56 +2,52 @@ name: Build and Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
-    - uses: actions/setup-go@v6
-      with:
-        go-version-file: go.mod
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v9
-      with:
-        version: latest
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
 
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
-    
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: go.mod
-    
-    - name: Test
-      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-    
-    - name: Upload coverage
-      uses: codecov/codecov-action@v5
-      with:
-        file: ./coverage.txt
+      - uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.txt
 
   build:
     runs-on: ubuntu-latest
     needs: test
     steps:
-    - uses: actions/checkout@v5
-    
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: go.mod
-    
-    - name: Build
-      run: go build -v .
-    
-    - name: Build Docker image
-      run: docker build --build-arg PKG_NAME=tplink-ddm-exporter -t tplink-ddm-exporter:${{ github.sha }} .
-
+      - uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -v .
+      - name: Build Docker image
+        run: docker build --build-arg PKG_NAME=tplink-ddm-exporter -t tplink-ddm-exporter:${{ github.sha }} .
