@@ -101,6 +101,8 @@ linters:
     rules:
       - linters:
           - goconst
+          - funlen
+          - paralleltest
         path: (.+)_test\.go
     paths:
       - third_party$

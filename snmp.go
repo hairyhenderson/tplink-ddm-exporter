@@ -9,8 +9,12 @@ import (
 	"github.com/gosnmp/gosnmp"
 )
 
-// TP-Link DDM Status MIB OIDs
+// SNMP OIDs
 const (
+	// Standard MIB-II OIDs
+	oidSysName = "1.3.6.1.2.1.1.5.0"
+
+	// TP-Link DDM Status MIB OIDs
 	oidDDMStatusPort        = "1.3.6.1.4.1.11863.6.96.1.7.1.1.1"
 	oidDDMStatusTemperature = "1.3.6.1.4.1.11863.6.96.1.7.1.1.2"
 	oidDDMStatusVoltage     = "1.3.6.1.4.1.11863.6.96.1.7.1.1.3"
@@ -35,6 +39,12 @@ type DDMMetrics struct {
 	RxPower     float64
 }
 
+// DDMResult holds the complete result of a DDM scrape
+type DDMResult struct {
+	SysName string
+	Metrics []DDMMetrics
+}
+
 // NewSNMPClient creates a new SNMP client
 func NewSNMPClient(target, community string) *SNMPClient {
 	return &SNMPClient{
@@ -43,8 +53,8 @@ func NewSNMPClient(target, community string) *SNMPClient {
 	}
 }
 
-// GetDDMMetrics queries all DDM metrics from the switch
-func (c *SNMPClient) GetDDMMetrics(ctx context.Context) ([]DDMMetrics, error) {
+// GetDDMMetrics queries all DDM metrics and sysName from the switch
+func (c *SNMPClient) GetDDMMetrics(ctx context.Context) (*DDMResult, error) {
 	// Create gosnmp client
 	client := &gosnmp.GoSNMP{
 		Target:    c.target,
@@ -71,14 +81,17 @@ func (c *SNMPClient) GetDDMMetrics(ctx context.Context) ([]DDMMetrics, error) {
 		return nil, fmt.Errorf("context cancelled: %w", ctx.Err())
 	}
 
-	// Walk the DDM status table
+	// Get sysName and walk the DDM status table
 	ddmData, err := c.walkAllOIDs(client)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse and combine results
-	return c.parseDDMMetrics(ddmData), nil
+	return &DDMResult{
+		SysName: ddmData.sysName,
+		Metrics: c.parseDDMMetrics(ddmData),
+	}, nil
 }
 
 // walkOID performs SNMP walk and returns string values
@@ -105,6 +118,7 @@ func (c *SNMPClient) walkOID(client *gosnmp.GoSNMP, oid string) ([]string, error
 }
 
 type ddmWalkData struct {
+	sysName      string
 	ports        []string
 	temps        []string
 	voltages     []string
@@ -117,6 +131,17 @@ func (c *SNMPClient) walkAllOIDs(client *gosnmp.GoSNMP) (*ddmWalkData, error) {
 	data := &ddmWalkData{}
 
 	var err error
+
+	// Get sysName (single value, not a walk)
+	result, err := client.Get([]string{oidSysName})
+	if err != nil {
+		slog.Debug("failed to get sysName", "error", err)
+	} else if len(result.Variables) > 0 {
+		pdu := result.Variables[0]
+		if pdu.Type == gosnmp.OctetString {
+			data.sysName = string(pdu.Value.([]byte))
+		}
+	}
 
 	data.ports, err = c.walkOID(client, oidDDMStatusPort)
 	if err != nil {
