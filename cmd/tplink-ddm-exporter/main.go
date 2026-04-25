@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type config struct {
@@ -131,7 +132,6 @@ func serve(ctx context.Context, logger *slog.Logger, srv *http.Server, listenAdd
 func setupServer(ctx context.Context, cfg *config) *http.Server {
 	mux := http.NewServeMux()
 
-	// Exporter self-metrics endpoint
 	exporterRegistry := prometheus.NewRegistry()
 	exporterRegistry.MustRegister(collectors.NewGoCollector())
 	exporterRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -139,41 +139,44 @@ func setupServer(ctx context.Context, cfg *config) *http.Server {
 	mux.Handle("/metrics", promhttp.HandlerFor(exporterRegistry, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
+	mux.Handle("/scrape", otelhttp.NewHandler(scrapeHandler(cfg), "GET /scrape"))
+	mux.HandleFunc("/", rootHandler)
 
-	// Scrape endpoint (returns scraped device metrics)
-	mux.HandleFunc("/scrape", func(w http.ResponseWriter, r *http.Request) {
-		// Get target from query params, fall back to default
+	return &http.Server{
+		ReadHeaderTimeout: 1 * time.Second,
+		ReadTimeout:       1 * time.Second,
+		Handler:           mux,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+	}
+}
+
+func scrapeHandler(cfg *config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		target := r.URL.Query().Get("target")
 		if target == "" {
 			target = cfg.Target
 		}
 
-		// Get community from query params, fall back to default
 		community := r.URL.Query().Get("community")
 		if community == "" {
 			community = cfg.Community
 		}
 
-		// Create SNMP client and collector
-		// Device name will be auto-detected from SNMP sysName during scrape
 		snmpClient := tplinkddm.NewSNMPClient(target, community)
-		collector := tplinkddm.NewCollector(snmpClient, target)
+		collector := tplinkddm.NewCollector(snmpClient, target).WithContext(r.Context())
 
-		// Create a registry for this scrape
 		scrapeRegistry := prometheus.NewRegistry()
 		scrapeRegistry.MustRegister(collector)
 
-		// Perform the scrape
-		handler := promhttp.HandlerFor(scrapeRegistry, promhttp.HandlerOpts{
+		promhttp.HandlerFor(scrapeRegistry, promhttp.HandlerOpts{
 			EnableOpenMetrics: true,
-		})
-		handler.ServeHTTP(w, r)
-	})
+		}).ServeHTTP(w, r)
+	}
+}
 
-	// Root endpoint
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = io.WriteString(w, `<html>
+func rootHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = io.WriteString(w, `<html>
 <head><title>TP-Link DDM Exporter</title></head>
 <body>
 <h1>TP-Link DDM Exporter</h1>
@@ -190,14 +193,6 @@ func setupServer(ctx context.Context, cfg *config) *http.Server {
 <p>Device names are automatically detected from SNMP sysName.</p>
 </body>
 </html>`)
-	})
-
-	return &http.Server{
-		ReadHeaderTimeout: 1 * time.Second,
-		ReadTimeout:       1 * time.Second,
-		Handler:           mux,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-	}
 }
 
 func setupLogger(level string) *slog.Logger {

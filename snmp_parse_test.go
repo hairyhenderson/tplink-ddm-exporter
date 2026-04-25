@@ -1,6 +1,7 @@
 package tplinkddm
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,7 +85,7 @@ func TestParseDDMMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := client.parseDDMMetrics(tt.data)
+			got := client.parseDDMMetrics(context.Background(), tt.data)
 			assert.Len(t, got, tt.want)
 
 			// Verify structure of returned metrics
@@ -109,7 +110,7 @@ func TestParseDDMMetrics_Values(t *testing.T) {
 		rxPowers:     []string{"0.4"},
 	}
 
-	metrics := client.parseDDMMetrics(data)
+	metrics := client.parseDDMMetrics(context.Background(), data)
 
 	require.Len(t, metrics, 1)
 
@@ -163,7 +164,7 @@ func TestParseDDMMetrics_OptionalFields(t *testing.T) {
 			rxPowerLowWarning:      []string{"-18.0"},
 		}
 
-		metrics := client.parseDDMMetrics(data)
+		metrics := client.parseDDMMetrics(context.Background(), data)
 		require.Len(t, metrics, 1)
 
 		m := metrics[0]
@@ -192,7 +193,7 @@ func TestParseDDMMetrics_OptionalFields(t *testing.T) {
 			rxPowers:     []string{"0.4"},
 		}
 
-		metrics := client.parseDDMMetrics(data)
+		metrics := client.parseDDMMetrics(context.Background(), data)
 		require.Len(t, metrics, 1)
 
 		m := metrics[0]
