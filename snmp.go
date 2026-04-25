@@ -5,15 +5,23 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SNMP OIDs
 const (
 	// Standard MIB-II OIDs
 	oidSysName = "1.3.6.1.2.1.1.5.0"
+
+	// DDM root OID - walk this to get all DDM data in one BulkWalk
+	oidDDMRoot = "1.3.6.1.4.1.11863.6.96.1"
 
 	// DDM Config (table .1.1.1.1)
 	// oidDDMConfigPort     = "1.3.6.1.4.1.11863.6.96.1.1.1.1.1"
@@ -137,20 +145,32 @@ func NewSNMPClient(target, community string) *SNMPClient {
 	}
 }
 
+//nolint:gochecknoglobals // package-level tracer is the OTel convention
+var tracer = otel.Tracer("github.com/hairyhenderson/tplink-ddm-exporter")
+
 // GetDDMMetrics queries all DDM metrics and sysName from the switch
 func (c *SNMPClient) GetDDMMetrics(ctx context.Context) (*DDMResult, error) {
-	// Create gosnmp client
+	ctx, span := tracer.Start(ctx, "SNMPClient.GetDDMMetrics",
+		trace.WithAttributes(
+			attribute.String("snmp.target", c.target),
+		),
+	)
+	defer span.End()
+
 	client := &gosnmp.GoSNMP{
 		Target:    c.target,
 		Port:      161,
 		Community: c.community,
 		Version:   gosnmp.Version2c,
-		Timeout:   time.Duration(10) * time.Second,
-		Retries:   3,
+		Timeout:   2 * time.Second,
+		Retries:   1,
 	}
 
 	err := client.Connect()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "SNMP connect failed")
+
 		return nil, fmt.Errorf("SNMP connect failed: %w", err)
 	}
 
@@ -160,59 +180,26 @@ func (c *SNMPClient) GetDDMMetrics(ctx context.Context) (*DDMResult, error) {
 		}
 	}()
 
-	// Check context cancellation
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("context cancelled: %w", ctx.Err())
 	}
 
-	// Get sysName and walk the DDM status table
-	ddmData, err := c.walkAllOIDs(client)
+	ddmData, err := c.walkAllOIDs(ctx, client)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "walk failed")
+
 		return nil, err
 	}
 
-	// Parse and combine results
+	metrics := c.parseDDMMetrics(ctx, ddmData)
+
+	span.SetAttributes(attribute.Int("metrics.count", len(metrics)))
+
 	return &DDMResult{
 		SysName: ddmData.sysName,
-		Metrics: c.parseDDMMetrics(ddmData),
+		Metrics: metrics,
 	}, nil
-}
-
-// walkOID performs SNMP walk and returns string values
-func (c *SNMPClient) walkOID(client *gosnmp.GoSNMP, oid string) ([]string, error) {
-	var results []string
-
-	err := client.Walk(oid, func(pdu gosnmp.SnmpPDU) error {
-		//nolint:exhaustive // only OctetString and Integer are expected from TP-Link DDM
-		switch pdu.Type {
-		case gosnmp.OctetString:
-			results = append(results, string(pdu.Value.([]byte)))
-		case gosnmp.Integer:
-			results = append(results, strconv.Itoa(pdu.Value.(int)))
-		default:
-			slog.Debug("unexpected SNMP type", "oid", pdu.Name, "type", pdu.Type)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("SNMP walk failed: %w", err)
-	}
-
-	return results, nil
-}
-
-// tryWalkOID performs an SNMP walk, logging a warning on failure instead of
-// returning an error. Use for optional OIDs that may not be supported.
-func (c *SNMPClient) tryWalkOID(client *gosnmp.GoSNMP, oid, label string) []string {
-	results, err := c.walkOID(client, oid)
-	if err != nil {
-		slog.Warn("optional OID walk failed, skipping", "oid", label, "error", err)
-
-		return nil
-	}
-
-	return results
 }
 
 type ddmWalkData struct {
@@ -266,99 +253,158 @@ type ddmWalkData struct {
 	rxPowerLowWarning  []string
 }
 
-//nolint:funlen // Walking many OIDs for DDM thresholds
-func (c *SNMPClient) walkAllOIDs(client *gosnmp.GoSNMP) (*ddmWalkData, error) {
-	data := &ddmWalkData{}
+// pduToString extracts a string value from an SNMP PDU, returning false for
+// unsupported types.
+func pduToString(pdu gosnmp.SnmpPDU) (string, bool) {
+	//nolint:exhaustive // only OctetString and Integer are expected from TP-Link DDM
+	switch pdu.Type {
+	case gosnmp.OctetString:
+		return string(pdu.Value.([]byte)), true
+	case gosnmp.Integer:
+		return strconv.Itoa(pdu.Value.(int)), true
+	default:
+		return "", false
+	}
+}
 
-	var err error
+// buildOIDDispatch creates a mapping from OID column prefix to the
+// corresponding field in ddmWalkData. Used to dispatch PDUs from a single
+// root BulkWalk into the correct slices.
+func buildOIDDispatch(data *ddmWalkData) map[string]*[]string {
+	return map[string]*[]string{
+		oidDDMStatusPort:        &data.ports,
+		oidDDMStatusTemperature: &data.temps,
+		oidDDMStatusVoltage:     &data.voltages,
+		oidDDMStatusBiasCurrent: &data.biasCurrents,
+		oidDDMStatusTxPower:     &data.txPowers,
+		oidDDMStatusRxPower:     &data.rxPowers,
+		oidDDMStatusSupported:   &data.ddmSupported,
+		oidDDMStatusLossSignal:  &data.lossOfSignal,
+		oidDDMStatusTxFault:     &data.txFault,
 
-	// Get sysName (single value, not a walk)
+		oidDDMConfigStatus:   &data.ddmEnabled,
+		oidDDMConfigShutdown: &data.shutdownPolicy,
+		oidDDMConfigPortLAG:  &data.lagMembership,
+
+		oidDDMRxPowerHighAlarm:   &data.rxPowerHighAlarm,
+		oidDDMRxPowerLowAlarm:    &data.rxPowerLowAlarm,
+		oidDDMRxPowerHighWarning: &data.rxPowerHighWarning,
+		oidDDMRxPowerLowWarning:  &data.rxPowerLowWarning,
+
+		oidDDMVoltageHighAlarm:   &data.voltageHighAlarm,
+		oidDDMVoltageLowAlarm:    &data.voltageLowAlarm,
+		oidDDMVoltageHighWarning: &data.voltageHighWarning,
+		oidDDMVoltageLowWarning:  &data.voltageLowWarning,
+
+		oidDDMBiasCurrentHighAlarm:   &data.biasCurrentHighAlarm,
+		oidDDMBiasCurrentLowAlarm:    &data.biasCurrentLowAlarm,
+		oidDDMBiasCurrentHighWarning: &data.biasCurrentHighWarning,
+		oidDDMBiasCurrentLowWarning:  &data.biasCurrentLowWarning,
+
+		oidDDMTxPowerHighAlarm:   &data.txPowerHighAlarm,
+		oidDDMTxPowerLowAlarm:    &data.txPowerLowAlarm,
+		oidDDMTxPowerHighWarning: &data.txPowerHighWarning,
+		oidDDMTxPowerLowWarning:  &data.txPowerLowWarning,
+
+		oidDDMTemperatureHighAlarm:   &data.tempHighAlarm,
+		oidDDMTemperatureLowAlarm:    &data.tempLowAlarm,
+		oidDDMTemperatureHighWarning: &data.tempHighWarning,
+		oidDDMTemperatureLowWarning:  &data.tempLowWarning,
+	}
+}
+
+// dispatchPDU routes a single PDU to the correct ddmWalkData field based on
+// its OID prefix.
+func dispatchPDU(pdu gosnmp.SnmpPDU, dispatch map[string]*[]string) {
+	val, ok := pduToString(pdu)
+	if !ok {
+		slog.Debug("unexpected SNMP type in root walk", "oid", pdu.Name, "type", pdu.Type)
+
+		return
+	}
+
+	for prefix, field := range dispatch {
+		if strings.HasPrefix(pdu.Name, "."+prefix+".") {
+			*field = append(*field, val)
+
+			return
+		}
+	}
+}
+
+func (c *SNMPClient) getSysName(ctx context.Context, client *gosnmp.GoSNMP) string {
+	_, span := tracer.Start(ctx, "SNMPClient.getSysName")
+	defer span.End()
+
+	client.Context = ctx
+
 	result, err := client.Get([]string{oidSysName})
 	if err != nil {
 		slog.Debug("failed to get sysName", "error", err)
-	} else if len(result.Variables) > 0 {
+		span.RecordError(err)
+
+		return ""
+	}
+
+	if len(result.Variables) > 0 {
 		pdu := result.Variables[0]
 		if pdu.Type == gosnmp.OctetString {
-			data.sysName = string(pdu.Value.([]byte))
+			name := string(pdu.Value.([]byte))
+			span.SetAttributes(attribute.String("snmp.sysName", name))
+
+			return name
 		}
 	}
 
-	// Current values
-	data.ports, err = c.walkOID(client, oidDDMStatusPort)
+	return ""
+}
+
+func (c *SNMPClient) walkAllOIDs(ctx context.Context, client *gosnmp.GoSNMP) (*ddmWalkData, error) {
+	ctx, span := tracer.Start(ctx, "SNMPClient.walkAllOIDs")
+	defer span.End()
+
+	data := &ddmWalkData{}
+
+	data.sysName = c.getSysName(ctx, client)
+
+	dispatch := buildOIDDispatch(data)
+	client.Context = ctx
+
+	var pduCount int
+
+	err := client.BulkWalk(oidDDMRoot, func(pdu gosnmp.SnmpPDU) error {
+		pduCount++
+
+		dispatchPDU(pdu, dispatch)
+
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ports: %w", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "root walk failed")
+
+		return nil, fmt.Errorf("DDM root walk failed: %w", err)
 	}
 
-	data.temps, err = c.walkOID(client, oidDDMStatusTemperature)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temperatures: %w", err)
+	span.SetAttributes(
+		attribute.Int("snmp.pdu_count", pduCount),
+		attribute.Int("snmp.ports", len(data.ports)),
+	)
+
+	if len(data.ports) == 0 {
+		return nil, fmt.Errorf("no DDM port data found in walk of %s", oidDDMRoot)
 	}
-
-	data.voltages, err = c.walkOID(client, oidDDMStatusVoltage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get voltages: %w", err)
-	}
-
-	data.biasCurrents, err = c.walkOID(client, oidDDMStatusBiasCurrent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bias currents: %w", err)
-	}
-
-	data.txPowers, err = c.walkOID(client, oidDDMStatusTxPower)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX powers: %w", err)
-	}
-
-	data.rxPowers, err = c.walkOID(client, oidDDMStatusRxPower)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RX powers: %w", err)
-	}
-
-	// Configuration (optional - may not be supported by all switches)
-	data.ddmEnabled = c.tryWalkOID(client, oidDDMConfigStatus, "DDM enabled status")
-	data.shutdownPolicy = c.tryWalkOID(client, oidDDMConfigShutdown, "shutdown policy")
-	data.lagMembership = c.tryWalkOID(client, oidDDMConfigPortLAG, "LAG membership")
-
-	// Status flags (optional)
-	data.ddmSupported = c.tryWalkOID(client, oidDDMStatusSupported, "DDM supported")
-	data.lossOfSignal = c.tryWalkOID(client, oidDDMStatusLossSignal, "loss of signal")
-	data.txFault = c.tryWalkOID(client, oidDDMStatusTxFault, "TX fault")
-
-	// Temperature thresholds (optional)
-	data.tempHighAlarm = c.tryWalkOID(client, oidDDMTemperatureHighAlarm, "temperature high alarm")
-	data.tempLowAlarm = c.tryWalkOID(client, oidDDMTemperatureLowAlarm, "temperature low alarm")
-	data.tempHighWarning = c.tryWalkOID(client, oidDDMTemperatureHighWarning, "temperature high warning")
-	data.tempLowWarning = c.tryWalkOID(client, oidDDMTemperatureLowWarning, "temperature low warning")
-
-	// Voltage thresholds (optional)
-	data.voltageHighAlarm = c.tryWalkOID(client, oidDDMVoltageHighAlarm, "voltage high alarm")
-	data.voltageLowAlarm = c.tryWalkOID(client, oidDDMVoltageLowAlarm, "voltage low alarm")
-	data.voltageHighWarning = c.tryWalkOID(client, oidDDMVoltageHighWarning, "voltage high warning")
-	data.voltageLowWarning = c.tryWalkOID(client, oidDDMVoltageLowWarning, "voltage low warning")
-
-	// Bias Current thresholds (optional)
-	data.biasCurrentHighAlarm = c.tryWalkOID(client, oidDDMBiasCurrentHighAlarm, "bias current high alarm")
-	data.biasCurrentLowAlarm = c.tryWalkOID(client, oidDDMBiasCurrentLowAlarm, "bias current low alarm")
-	data.biasCurrentHighWarning = c.tryWalkOID(client, oidDDMBiasCurrentHighWarning, "bias current high warning")
-	data.biasCurrentLowWarning = c.tryWalkOID(client, oidDDMBiasCurrentLowWarning, "bias current low warning")
-
-	// TX Power thresholds (optional)
-	data.txPowerHighAlarm = c.tryWalkOID(client, oidDDMTxPowerHighAlarm, "TX power high alarm")
-	data.txPowerLowAlarm = c.tryWalkOID(client, oidDDMTxPowerLowAlarm, "TX power low alarm")
-	data.txPowerHighWarning = c.tryWalkOID(client, oidDDMTxPowerHighWarning, "TX power high warning")
-	data.txPowerLowWarning = c.tryWalkOID(client, oidDDMTxPowerLowWarning, "TX power low warning")
-
-	// RX Power thresholds (optional)
-	data.rxPowerHighAlarm = c.tryWalkOID(client, oidDDMRxPowerHighAlarm, "RX power high alarm")
-	data.rxPowerLowAlarm = c.tryWalkOID(client, oidDDMRxPowerLowAlarm, "RX power low alarm")
-	data.rxPowerHighWarning = c.tryWalkOID(client, oidDDMRxPowerHighWarning, "RX power high warning")
-	data.rxPowerLowWarning = c.tryWalkOID(client, oidDDMRxPowerLowWarning, "RX power low warning")
 
 	return data, nil
 }
 
 //nolint:gocognit,gocyclo,funlen // Parsing many DDM threshold fields
-func (c *SNMPClient) parseDDMMetrics(data *ddmWalkData) []DDMMetrics {
+func (c *SNMPClient) parseDDMMetrics(ctx context.Context, data *ddmWalkData) []DDMMetrics {
+	_, span := tracer.Start(ctx, "SNMPClient.parseDDMMetrics",
+		trace.WithAttributes(attribute.Int("port.count", len(data.ports))),
+	)
+	defer span.End()
+
 	metrics := make([]DDMMetrics, 0, len(data.ports))
 
 	for idx, portStr := range data.ports {

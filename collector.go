@@ -16,6 +16,7 @@ type SNMPGetter interface {
 type Collector struct { //nolint:govet // field grouping by category is clearer than optimal alignment
 	snmpClient SNMPGetter
 	target     string
+	ctx        context.Context //nolint:containedctx // per-request collector, context set by HTTP handler
 
 	// Current values
 	temp     *prometheus.GaugeVec
@@ -191,9 +192,20 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.rxPowerThreshold.Describe(ch)
 }
 
+// WithContext returns the collector with the given context set, for trace propagation.
+func (c *Collector) WithContext(ctx context.Context) *Collector {
+	c.ctx = ctx
+
+	return c
+}
+
 // Collect implements prometheus.Collector
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	ctx := context.Background()
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	c.CollectWithContext(ctx, ch)
 }
 
