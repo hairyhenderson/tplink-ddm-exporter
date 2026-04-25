@@ -201,6 +201,19 @@ func (c *SNMPClient) walkOID(client *gosnmp.GoSNMP, oid string) ([]string, error
 	return results, nil
 }
 
+// tryWalkOID performs an SNMP walk, logging a warning on failure instead of
+// returning an error. Use for optional OIDs that may not be supported.
+func (c *SNMPClient) tryWalkOID(client *gosnmp.GoSNMP, oid, label string) []string {
+	results, err := c.walkOID(client, oid)
+	if err != nil {
+		slog.Warn("optional OID walk failed, skipping", "oid", label, "error", err)
+
+		return nil
+	}
+
+	return results
+}
+
 type ddmWalkData struct {
 	sysName string
 	// Current values
@@ -252,7 +265,7 @@ type ddmWalkData struct {
 	rxPowerLowWarning  []string
 }
 
-//nolint:gocyclo,funlen,gocognit // Walking many OIDs for DDM thresholds
+//nolint:funlen // Walking many OIDs for DDM thresholds
 func (c *SNMPClient) walkAllOIDs(client *gosnmp.GoSNMP) (*ddmWalkData, error) {
 	data := &ddmWalkData{}
 
@@ -300,142 +313,45 @@ func (c *SNMPClient) walkAllOIDs(client *gosnmp.GoSNMP) (*ddmWalkData, error) {
 		return nil, fmt.Errorf("failed to get RX powers: %w", err)
 	}
 
-	// Configuration
-	data.ddmEnabled, err = c.walkOID(client, oidDDMConfigStatus)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DDM enabled status: %w", err)
-	}
+	// Configuration (optional - may not be supported by all switches)
+	data.ddmEnabled = c.tryWalkOID(client, oidDDMConfigStatus, "DDM enabled status")
+	data.shutdownPolicy = c.tryWalkOID(client, oidDDMConfigShutdown, "shutdown policy")
+	data.lagMembership = c.tryWalkOID(client, oidDDMConfigPortLAG, "LAG membership")
 
-	data.shutdownPolicy, err = c.walkOID(client, oidDDMConfigShutdown)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get shutdown policy: %w", err)
-	}
+	// Status flags (optional)
+	data.ddmSupported = c.tryWalkOID(client, oidDDMStatusSupported, "DDM supported")
+	data.lossOfSignal = c.tryWalkOID(client, oidDDMStatusLossSignal, "loss of signal")
+	data.txFault = c.tryWalkOID(client, oidDDMStatusTxFault, "TX fault")
 
-	data.lagMembership, err = c.walkOID(client, oidDDMConfigPortLAG)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get LAG membership: %w", err)
-	}
+	// Temperature thresholds (optional)
+	data.tempHighAlarm = c.tryWalkOID(client, oidDDMTemperatureHighAlarm, "temperature high alarm")
+	data.tempLowAlarm = c.tryWalkOID(client, oidDDMTemperatureLowAlarm, "temperature low alarm")
+	data.tempHighWarning = c.tryWalkOID(client, oidDDMTemperatureHighWarning, "temperature high warning")
+	data.tempLowWarning = c.tryWalkOID(client, oidDDMTemperatureLowWarning, "temperature low warning")
 
-	// Status flags
-	data.ddmSupported, err = c.walkOID(client, oidDDMStatusSupported)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DDM supported: %w", err)
-	}
+	// Voltage thresholds (optional)
+	data.voltageHighAlarm = c.tryWalkOID(client, oidDDMVoltageHighAlarm, "voltage high alarm")
+	data.voltageLowAlarm = c.tryWalkOID(client, oidDDMVoltageLowAlarm, "voltage low alarm")
+	data.voltageHighWarning = c.tryWalkOID(client, oidDDMVoltageHighWarning, "voltage high warning")
+	data.voltageLowWarning = c.tryWalkOID(client, oidDDMVoltageLowWarning, "voltage low warning")
 
-	data.lossOfSignal, err = c.walkOID(client, oidDDMStatusLossSignal)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get loss of signal: %w", err)
-	}
+	// Bias Current thresholds (optional)
+	data.biasCurrentHighAlarm = c.tryWalkOID(client, oidDDMBiasCurrentHighAlarm, "bias current high alarm")
+	data.biasCurrentLowAlarm = c.tryWalkOID(client, oidDDMBiasCurrentLowAlarm, "bias current low alarm")
+	data.biasCurrentHighWarning = c.tryWalkOID(client, oidDDMBiasCurrentHighWarning, "bias current high warning")
+	data.biasCurrentLowWarning = c.tryWalkOID(client, oidDDMBiasCurrentLowWarning, "bias current low warning")
 
-	data.txFault, err = c.walkOID(client, oidDDMStatusTxFault)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX fault: %w", err)
-	}
+	// TX Power thresholds (optional)
+	data.txPowerHighAlarm = c.tryWalkOID(client, oidDDMTxPowerHighAlarm, "TX power high alarm")
+	data.txPowerLowAlarm = c.tryWalkOID(client, oidDDMTxPowerLowAlarm, "TX power low alarm")
+	data.txPowerHighWarning = c.tryWalkOID(client, oidDDMTxPowerHighWarning, "TX power high warning")
+	data.txPowerLowWarning = c.tryWalkOID(client, oidDDMTxPowerLowWarning, "TX power low warning")
 
-	// Temperature thresholds
-	data.tempHighAlarm, err = c.walkOID(client, oidDDMTemperatureHighAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temperature high alarm: %w", err)
-	}
-
-	data.tempLowAlarm, err = c.walkOID(client, oidDDMTemperatureLowAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temperature low alarm: %w", err)
-	}
-
-	data.tempHighWarning, err = c.walkOID(client, oidDDMTemperatureHighWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temperature high warning: %w", err)
-	}
-
-	data.tempLowWarning, err = c.walkOID(client, oidDDMTemperatureLowWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temperature low warning: %w", err)
-	}
-
-	// Voltage thresholds
-	data.voltageHighAlarm, err = c.walkOID(client, oidDDMVoltageHighAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get voltage high alarm: %w", err)
-	}
-
-	data.voltageLowAlarm, err = c.walkOID(client, oidDDMVoltageLowAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get voltage low alarm: %w", err)
-	}
-
-	data.voltageHighWarning, err = c.walkOID(client, oidDDMVoltageHighWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get voltage high warning: %w", err)
-	}
-
-	data.voltageLowWarning, err = c.walkOID(client, oidDDMVoltageLowWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get voltage low warning: %w", err)
-	}
-
-	// Bias Current thresholds
-	data.biasCurrentHighAlarm, err = c.walkOID(client, oidDDMBiasCurrentHighAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bias current high alarm: %w", err)
-	}
-
-	data.biasCurrentLowAlarm, err = c.walkOID(client, oidDDMBiasCurrentLowAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bias current low alarm: %w", err)
-	}
-
-	data.biasCurrentHighWarning, err = c.walkOID(client, oidDDMBiasCurrentHighWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bias current high warning: %w", err)
-	}
-
-	data.biasCurrentLowWarning, err = c.walkOID(client, oidDDMBiasCurrentLowWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bias current low warning: %w", err)
-	}
-
-	// TX Power thresholds
-	data.txPowerHighAlarm, err = c.walkOID(client, oidDDMTxPowerHighAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX power high alarm: %w", err)
-	}
-
-	data.txPowerLowAlarm, err = c.walkOID(client, oidDDMTxPowerLowAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX power low alarm: %w", err)
-	}
-
-	data.txPowerHighWarning, err = c.walkOID(client, oidDDMTxPowerHighWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX power high warning: %w", err)
-	}
-
-	data.txPowerLowWarning, err = c.walkOID(client, oidDDMTxPowerLowWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TX power low warning: %w", err)
-	}
-
-	// RX Power thresholds
-	data.rxPowerHighAlarm, err = c.walkOID(client, oidDDMRxPowerHighAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RX power high alarm: %w", err)
-	}
-
-	data.rxPowerLowAlarm, err = c.walkOID(client, oidDDMRxPowerLowAlarm)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RX power low alarm: %w", err)
-	}
-
-	data.rxPowerHighWarning, err = c.walkOID(client, oidDDMRxPowerHighWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RX power high warning: %w", err)
-	}
-
-	data.rxPowerLowWarning, err = c.walkOID(client, oidDDMRxPowerLowWarning)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RX power low warning: %w", err)
-	}
+	// RX Power thresholds (optional)
+	data.rxPowerHighAlarm = c.tryWalkOID(client, oidDDMRxPowerHighAlarm, "RX power high alarm")
+	data.rxPowerLowAlarm = c.tryWalkOID(client, oidDDMRxPowerLowAlarm, "RX power low alarm")
+	data.rxPowerHighWarning = c.tryWalkOID(client, oidDDMRxPowerHighWarning, "RX power high warning")
+	data.rxPowerLowWarning = c.tryWalkOID(client, oidDDMRxPowerLowWarning, "RX power low warning")
 
 	return data, nil
 }

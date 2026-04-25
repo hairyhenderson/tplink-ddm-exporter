@@ -122,3 +122,85 @@ func TestParseDDMMetrics_Values(t *testing.T) {
 	assert.InDelta(t, 0.5, m.TxPower, 0.01)
 	assert.InDelta(t, 0.4, m.RxPower, 0.01)
 }
+
+func TestParseDDMMetrics_OptionalFields(t *testing.T) {
+	client := &SNMPClient{}
+
+	t.Run("with all optional fields", func(t *testing.T) {
+		data := &ddmWalkData{
+			sysName:                "Test Switch",
+			ports:                  []string{"1/0/1"},
+			temps:                  []string{"45.5"},
+			voltages:               []string{"3.30"},
+			biasCurrents:           []string{"6.0"},
+			txPowers:               []string{"0.5"},
+			rxPowers:               []string{"0.4"},
+			ddmEnabled:             []string{"1"},
+			shutdownPolicy:         []string{"2"},
+			lagMembership:          []string{"Trunk1"},
+			ddmSupported:           []string{"1"},
+			lossOfSignal:           []string{"0"},
+			txFault:                []string{"0"},
+			tempHighAlarm:          []string{"80.0"},
+			tempLowAlarm:           []string{"-10.0"},
+			tempHighWarning:        []string{"70.0"},
+			tempLowWarning:         []string{"0.0"},
+			voltageHighAlarm:       []string{"3.6"},
+			voltageLowAlarm:        []string{"2.9"},
+			voltageHighWarning:     []string{"3.5"},
+			voltageLowWarning:      []string{"3.0"},
+			biasCurrentHighAlarm:   []string{"85.0"},
+			biasCurrentLowAlarm:    []string{"1.0"},
+			biasCurrentHighWarning: []string{"70.0"},
+			biasCurrentLowWarning:  []string{"2.0"},
+			txPowerHighAlarm:       []string{"1.0"},
+			txPowerLowAlarm:        []string{"-5.0"},
+			txPowerHighWarning:     []string{"0.5"},
+			txPowerLowWarning:      []string{"-4.0"},
+			rxPowerHighAlarm:       []string{"1.0"},
+			rxPowerLowAlarm:        []string{"-20.0"},
+			rxPowerHighWarning:     []string{"0.5"},
+			rxPowerLowWarning:      []string{"-18.0"},
+		}
+
+		metrics := client.parseDDMMetrics(data)
+		require.Len(t, metrics, 1)
+
+		m := metrics[0]
+		assert.True(t, m.DDMEnabled)
+		assert.Equal(t, 2, m.ShutdownPolicy)
+		assert.Equal(t, "Trunk1", m.LAGMembership)
+		assert.True(t, m.DDMSupported)
+		assert.False(t, m.LossOfSignal)
+		assert.False(t, m.TxFault)
+		assert.InDelta(t, 80.0, m.TemperatureHighAlarm, 0.01)
+		assert.InDelta(t, -10.0, m.TemperatureLowAlarm, 0.01)
+		assert.InDelta(t, 3.6, m.VoltageHighAlarm, 0.01)
+		assert.InDelta(t, 85.0, m.BiasCurrentHighAlarm, 0.01)
+		assert.InDelta(t, -5.0, m.TxPowerLowAlarm, 0.01)
+		assert.InDelta(t, -20.0, m.RxPowerLowAlarm, 0.01)
+	})
+
+	t.Run("with nil optional fields", func(t *testing.T) {
+		data := &ddmWalkData{
+			sysName:      "Test Switch",
+			ports:        []string{"1/0/1"},
+			temps:        []string{"45.5"},
+			voltages:     []string{"3.30"},
+			biasCurrents: []string{"6.0"},
+			txPowers:     []string{"0.5"},
+			rxPowers:     []string{"0.4"},
+		}
+
+		metrics := client.parseDDMMetrics(data)
+		require.Len(t, metrics, 1)
+
+		m := metrics[0]
+		assert.InDelta(t, 45.5, m.Temperature, 0.01)
+		assert.False(t, m.DDMEnabled)
+		assert.Equal(t, 0, m.ShutdownPolicy)
+		assert.Empty(t, m.LAGMembership)
+		assert.False(t, m.DDMSupported)
+		assert.InDelta(t, 0, m.TemperatureHighAlarm, 0.01)
+	})
+}
