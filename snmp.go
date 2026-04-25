@@ -183,12 +183,13 @@ func (c *SNMPClient) walkOID(client *gosnmp.GoSNMP, oid string) ([]string, error
 	var results []string
 
 	err := client.Walk(oid, func(pdu gosnmp.SnmpPDU) error {
-		//nolint:exhaustive // Only OctetString is expected for TP-Link DDM DisplayString values
+		//nolint:exhaustive // only OctetString and Integer are expected from TP-Link DDM
 		switch pdu.Type {
 		case gosnmp.OctetString:
 			results = append(results, string(pdu.Value.([]byte)))
+		case gosnmp.Integer:
+			results = append(results, strconv.Itoa(pdu.Value.(int)))
 		default:
-			// Other types are ignored
 			slog.Debug("unexpected SNMP type", "oid", pdu.Name, "type", pdu.Type)
 		}
 
