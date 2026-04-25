@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.2...v0.2.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **perf:** single root BulkWalk and OpenTelemetry tracing ([#37](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/37)) ([0963e2b](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/0963e2bbea3e68fbd3cad6d8eee8e164b6c99dca))
+
 ## [0.2.2](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.1...v0.2.2) (2026-04-25)
 
 
