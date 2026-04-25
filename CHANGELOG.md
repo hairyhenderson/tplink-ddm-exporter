@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.1...v0.2.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* Handle Integer SNMP type in walkOID ([#35](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/35)) ([00d0fc8](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/00d0fc87fd7374f2bdad70170f49dbd6fbb43ed2))
+
 ## [0.2.1](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.0...v0.2.1) (2026-04-25)
 
 
