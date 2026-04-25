@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.1.0...v0.2.0) (2026-04-25)
+
+
+### Features
+
+* More state/alarm threshold metrics ([#31](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/31)) ([614b3c4](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/614b3c42221a458ca15bba09fb954cc7ca862dfa))
+
+
+### Dependencies
+
+* **actions:** Bump codecov/codecov-action from 5 to 6 ([#29](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/29)) ([cdaf0f1](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/cdaf0f1684aa75922993cd51d9632885ff1e0bdb))
+* **actions:** Bump docker/login-action from 3 to 4 ([#25](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/25)) ([1b71276](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/1b71276a5a7f48458aabb04d6609d9e591982be5))
+* **actions:** Bump docker/setup-buildx-action from 3 to 4 ([#26](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/26)) ([2e2d9a1](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/2e2d9a107edcb04b39c75c8404fa9272fd2698c2))
+* **actions:** Bump docker/setup-qemu-action from 3 to 4 ([#24](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/24)) ([f1fc6e9](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/f1fc6e90343f05d497f2030ca39141c91b58fc50))
+* **actions:** Bump the actions group across 1 directory with 2 updates ([#27](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/27)) ([4880a6c](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/4880a6cc9ce7f4d47908e5c13012674e20998194))
+* **actions:** Bump webiny/action-conventional-commits ([#20](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/20)) ([eba2906](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/eba2906dbcd41b2e032312c3cddcf8a3f83606a9))
+
 ## [0.1.0](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.0.1...v0.1.0) (2026-01-10)
 
 
