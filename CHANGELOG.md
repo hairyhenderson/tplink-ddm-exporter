@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.0...v0.2.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* Make config/threshold SNMP walks non-fatal ([#33](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/33)) ([ad7f484](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/ad7f48471765ddb81f930f8ff890380e9f36efbf))
+
 ## [0.2.0](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.1.0...v0.2.0) (2026-04-25)
 
 
