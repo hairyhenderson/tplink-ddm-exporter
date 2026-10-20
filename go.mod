@@ -1,8 +1,6 @@
 module github.com/hairyhenderson/tplink-ddm-exporter
 
-go 1.26.0
-
-toolchain go1.26.2
+go 1.27.3
 
 require (
 	github.com/gosnmp/gosnmp v1.43.2
