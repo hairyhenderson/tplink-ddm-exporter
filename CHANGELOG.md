@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.3...v0.2.4) (2026-10-20)
+
+
+### Dependencies
+
+* update Go to 1.27.3 ([#52](https://github.com/hairyhenderson/tplink-ddm-exporter/issues/52)) ([65c4558](https://github.com/hairyhenderson/tplink-ddm-exporter/commit/65c455875e99095bebf873ac9146e042e003e2a9))
+
 ## [0.2.3](https://github.com/hairyhenderson/tplink-ddm-exporter/compare/v0.2.2...v0.2.3) (2026-04-25)
 
 
