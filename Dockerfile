@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.6.0-labs
+# syntax=docker/dockerfile:1.28.0-labs@sha256:ad43eec41369d9ef94412c0d1eb3203d12218d01da225afc92a3aeba3a0e7796
 FROM --platform=linux/amd64 golang:1.27.3-alpine AS build
 
 ARG PKG_NAME
