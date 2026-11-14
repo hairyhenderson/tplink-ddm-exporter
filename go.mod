@@ -3,7 +3,7 @@ module github.com/hairyhenderson/tplink-ddm-exporter
 go 1.27.3
 
 require (
-	github.com/gosnmp/gosnmp v1.43.2
+	github.com/gosnmp/gosnmp v1.47.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0
