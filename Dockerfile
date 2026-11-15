@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.28.0-labs@sha256:ad43eec41369d9ef94412c0d1eb3203d12218d01da225afc92a3aeba3a0e7796
-FROM --platform=linux/amd64 golang:1.27.3-alpine AS build
+FROM --platform=linux/amd64 golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 
 ARG PKG_NAME
 ARG TARGETOS
@@ -56,7 +56,7 @@ COPY --from=build /bin/${PKG_NAME}_${TARGETOS}-${TARGETARCH}${TARGETVARIANT} /${
 
 ENTRYPOINT [ "/tplink-ddm-exporter" ]
 
-FROM --platform=windows/amd64 mcr.microsoft.com/windows/nanoserver:2009-KB4579311 AS release-windows
+FROM --platform=windows/amd64 mcr.microsoft.com/windows/nanoserver:2009-KB4579311@sha256:b9d2bb3399baac0ce0881ac82f03e759dadcf4edf751ebd9682b1435f6b9b71d AS release-windows
 
 ARG PKG_NAME
 ARG TARGETOS
