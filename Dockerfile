@@ -40,7 +40,7 @@ COPY --from=build /bin/${PKG_NAME}_${TARGETOS}-${TARGETARCH}${TARGETVARIANT} /${
 
 ENTRYPOINT [ "/tplink-ddm-exporter" ]
 
-FROM alpine:3.23 AS alpine
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS alpine
 
 ARG PKG_NAME
 ARG VCS_REF
